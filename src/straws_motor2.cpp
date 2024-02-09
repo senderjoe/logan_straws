@@ -1,13 +1,13 @@
  /*
  *
  */
-
+#include <Arduino.h>
 // Include the AccelStepper Library
 #include <AccelStepper.h>
 
 // define step constant
 #define FULLSTEP 4
-#define STEP_PER_REVOLUTION 2048 // this value is from datasheet
+#define STEP_PER_REVOLUTION 2048  // this value is from datasheet
 #define SPEED 250
 #define ACCELL 500
 #define SEGMENT STEP_PER_REVOLUTION/12
@@ -58,19 +58,43 @@ int sensorPins[12] {A0, A1, A2, A3, A4, A5, A6, A7, A8, A9, A10, A11 };
 int randomOffsets[12];
 
 int cylinderOffsets[12] {
-  round(SEGMENT * 6),
-  round(SEGMENT * 5), 
-  round(SEGMENT * 4), 
-  round(SEGMENT * 3),
-  round(SEGMENT * 2),
-  round(SEGMENT),
+  static_cast<int>(SEGMENT * 6),
+  static_cast<int>(SEGMENT * 5), 
+  static_cast<int>(SEGMENT * 4), 
+  static_cast<int>(SEGMENT * 3),
+  static_cast<int>(SEGMENT * 2),
+  static_cast<int>(SEGMENT),
   0,
-  STEP_PER_REVOLUTION - round(SEGMENT),
-  STEP_PER_REVOLUTION - round(SEGMENT * 2),
-  STEP_PER_REVOLUTION - round(SEGMENT * 3),
-  STEP_PER_REVOLUTION - round(SEGMENT * 4),
-  STEP_PER_REVOLUTION - round(SEGMENT * 5),
+  STEP_PER_REVOLUTION - static_cast<int>(SEGMENT),
+  STEP_PER_REVOLUTION - static_cast<int>(SEGMENT * 2),
+  STEP_PER_REVOLUTION - static_cast<int>(SEGMENT * 3),
+  STEP_PER_REVOLUTION - static_cast<int>(SEGMENT * 4),
+  STEP_PER_REVOLUTION - static_cast<int>(SEGMENT * 5)
 };
+
+void initStepper(AccelStepper &stepper);
+void resetCurrentPosition();
+void initRandomOffset();
+void resetRandomOffset();
+void initCylinderOffset();
+void resetCylinderOffset();
+void doRotation(float rotations);
+void initStage0();
+void initStage1();
+void initStage2();
+void initStage3();
+void initStage4();
+void initStage5();
+void initStage6();
+void initStage7();
+void initStage8();
+void initStage9();
+void alignMotors();
+bool stageComplete();
+int findMotorIndex(char inByte);
+void alignAuto();
+void alignBySensor(int stepperID);
+
 
 void setup() {
   Serial.begin(9600);
@@ -88,6 +112,62 @@ void setup() {
   for (int i = 0; i < 12; ++i) {
     Serial.println(motors[i].targetPosition());
   }
+}
+
+
+void loop() {
+  // change direction once the motor reaches target position
+  //  if (stepper1.distanceToGo() == 0)
+  //    stepper1.moveTo(0);
+  if (stageComplete() && currentStage == 0) {
+    delay(1000);
+    initStage1();
+  } else if (stageComplete() && currentStage == 1) {
+    // delay(1000);
+    initStage2();
+  } else if ( stageComplete() && currentStage == 2) {
+    // delay(1000);
+    initStage3();
+  } else if ( stageComplete() && currentStage == 3) {
+    delay(1000);
+    initStage4();
+  } else if ( stageComplete() && currentStage == 4) {
+    delay(1000);
+    initStage5();
+  } else if ( stageComplete() && currentStage == 5) {
+    // delay(1000);
+    initStage6();
+  } else if ( stageComplete() && currentStage == 6) {
+    delay(1000);
+    initStage7();
+  } else if ( stageComplete() && currentStage == 7) {
+    // delay(1000);
+    initStage8();
+  } else if ( stageComplete() && currentStage == 8) {
+    initStage9();
+  } else if ( stageComplete() && currentStage == 9) {
+    Serial.println("Stages Complete");
+    currentStage = -1;
+  } else if (LOOPING && stageComplete() && currentStage == -1) {
+    initStage0();
+  }
+  
+  for (int i = 0; i < 12; ++i) {
+    motors[i].run();
+  }
+  
+
+//  Serial.print(stepper1.currentPosition());
+//  Serial.print("\t");
+//  Serial.println(stepper2.currentPosition());
+
+  // Serial.print(F("Current Position: "));
+  // Serial.println(stepper.currentPosition());
+//  int newSensor1Val = digitalRead(sensor1);
+//  if (newSensor1Val != sensor1val) {
+//    sensor1val = newSensor1Val;
+//    Serial.println(newSensor1Val);
+//  }
 }
 
 void initStepper(AccelStepper &stepper) {
@@ -206,60 +286,6 @@ void alignMotors(){
     stepper1.run();
   }
 
-void loop() {
-  // change direction once the motor reaches target position
-  //  if (stepper1.distanceToGo() == 0)
-  //    stepper1.moveTo(0);
-  if (stageComplete() && currentStage == 0) {
-    delay(1000);
-    initStage1();
-  } else if (stageComplete() && currentStage == 1) {
-    // delay(1000);
-    initStage2();
-  } else if ( stageComplete() && currentStage == 2) {
-    // delay(1000);
-    initStage3();
-  } else if ( stageComplete() && currentStage == 3) {
-    delay(1000);
-    initStage4();
-  } else if ( stageComplete() && currentStage == 4) {
-    delay(1000);
-    initStage5();
-  } else if ( stageComplete() && currentStage == 5) {
-    // delay(1000);
-    initStage6();
-  } else if ( stageComplete() && currentStage == 6) {
-    delay(1000);
-    initStage7();
-  } else if ( stageComplete() && currentStage == 7) {
-    // delay(1000);
-    initStage8();
-  } else if ( stageComplete() && currentStage == 8) {
-    initStage9();
-  } else if ( stageComplete() && currentStage == 9) {
-    Serial.println("Stages Complete");
-    currentStage = -1;
-  } else if (LOOPING && stageComplete() && currentStage == -1) {
-    initStage0();
-  }
-  
-  for (int i = 0; i < 12; ++i) {
-    motors[i].run();
-  }
-  
-
-//  Serial.print(stepper1.currentPosition());
-//  Serial.print("\t");
-//  Serial.println(stepper2.currentPosition());
-
-  // Serial.print(F("Current Position: "));
-  // Serial.println(stepper.currentPosition());
-//  int newSensor1Val = digitalRead(sensor1);
-//  if (newSensor1Val != sensor1val) {
-//    sensor1val = newSensor1Val;
-//    Serial.println(newSensor1Val);
-//  }
-}
 
 bool stageComplete() {
 
