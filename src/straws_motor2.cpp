@@ -9,6 +9,7 @@
 #define FULLSTEP 4
 #define STEP_PER_REVOLUTION 2048  // this value is from datasheet
 #define SPEED 250
+#define ALIGNSPEED 500
 #define ACCELL 500
 #define SEGMENT STEP_PER_REVOLUTION/12
 #define MANUAL_STEP STEP_PER_REVOLUTION/64
@@ -21,6 +22,7 @@
 int sensor1val;
 int sensor1 = 5;
 int currentStage;
+int alignedTime;
 
 // Pins entered in sequence IN1-IN3-IN2-IN4 for proper step sequence
 AccelStepper stepper0(FULLSTEP, 6, 8, 7, 9);
@@ -79,25 +81,17 @@ void resetRandomOffset();
 void initCylinderOffset();
 void resetCylinderOffset();
 void doRotation(float rotations);
-void initStage0();
-void initStage1();
-void initStage2();
-void initStage3();
-void initStage4();
-void initStage5();
-void initStage6();
-void initStage7();
-void initStage8();
-void initStage9();
+void initStage(int stageNo);
 void alignMotors();
 bool stageComplete();
 int findMotorIndex(char inByte);
 void alignAuto();
 void alignBySensor(int stepperID);
+int getAverage (int (&lastTen)[10], int sensorValue);
 
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(115200);
   // pinMode (sensor1, INPUT);
   // sensor1val = digitalRead(sensor1);
 
@@ -108,7 +102,7 @@ void setup() {
   // alignManual();
   alignAuto();
   
-  initStage0();
+  initStage(0);
   for (int i = 0; i < 12; ++i) {
     Serial.println(motors[i].targetPosition());
   }
@@ -116,58 +110,13 @@ void setup() {
 
 
 void loop() {
-  // change direction once the motor reaches target position
-  //  if (stepper1.distanceToGo() == 0)
-  //    stepper1.moveTo(0);
-  if (stageComplete() && currentStage == 0) {
-    delay(1000);
-    initStage1();
-  } else if (stageComplete() && currentStage == 1) {
-    // delay(1000);
-    initStage2();
-  } else if ( stageComplete() && currentStage == 2) {
-    // delay(1000);
-    initStage3();
-  } else if ( stageComplete() && currentStage == 3) {
-    delay(1000);
-    initStage4();
-  } else if ( stageComplete() && currentStage == 4) {
-    delay(1000);
-    initStage5();
-  } else if ( stageComplete() && currentStage == 5) {
-    // delay(1000);
-    initStage6();
-  } else if ( stageComplete() && currentStage == 6) {
-    delay(1000);
-    initStage7();
-  } else if ( stageComplete() && currentStage == 7) {
-    // delay(1000);
-    initStage8();
-  } else if ( stageComplete() && currentStage == 8) {
-    initStage9();
-  } else if ( stageComplete() && currentStage == 9) {
-    Serial.println("Stages Complete");
-    currentStage = -1;
-  } else if (LOOPING && stageComplete() && currentStage == -1) {
-    initStage0();
+  if (stageComplete() && currentStage != -1) {
+    initStage(currentStage + 1);
   }
   
   for (int i = 0; i < 12; ++i) {
     motors[i].run();
   }
-  
-
-//  Serial.print(stepper1.currentPosition());
-//  Serial.print("\t");
-//  Serial.println(stepper2.currentPosition());
-
-  // Serial.print(F("Current Position: "));
-  // Serial.println(stepper.currentPosition());
-//  int newSensor1Val = digitalRead(sensor1);
-//  if (newSensor1Val != sensor1val) {
-//    sensor1val = newSensor1Val;
-//    Serial.println(newSensor1Val);
-//  }
 }
 
 void initStepper(AccelStepper &stepper) {
@@ -219,65 +168,65 @@ void doRotation(float rotations){
   }
 }
 
-void initStage0() {
-  // Open / close
-  resetCurrentPosition();
-  doRotation(2.5);
-  currentStage = 0;
-  Serial.println("Stage 0");
-}
+void initStage(int stageNo) {
+  currentStage = stageNo;
+  Serial.print("Stage ");
+  Serial.print(stageNo);
+  Serial.println();
 
-void initStage1(){
-  initRandomOffset();
-  currentStage = 1;
-  Serial.println("Stage 1");
-}
+  switch(stageNo) {
+    case 0:  // open / close
+      resetCurrentPosition();
+      doRotation(2.5);
+      break;
+    case 1:
+      initRandomOffset();
+      break;
+    case 2:
+      doRotation(2);
+      break;
+    case 3:
+      resetRandomOffset();
+      break;
+    case 4:
+      initCylinderOffset();
+      break;
+    case 5:
+      doRotation(3); 
+      break;
+    case 6:
+      resetCylinderOffset();
+      break;
+    case 7:
+      initRandomOffset();
+      break;
+    case 8:
+      doRotation(2.5);
+      break;
+    case 9:
+      resetRandomOffset();
+      break;
+    case 10:
+      if (!LOOPING) {
+        currentStage = -1;
+        break;
+      }
+      delay(1000);
+      if (millis() - alignedTime > 60 * 60 * 1000) {  // 1 hour has passed
+        doRotation(0.5);  // open in prep for aligning
+      } else {
+        initStage(0);
+      }
+      break;
+    case 11:
+      alignAuto();
+      initStage(0);
+      break;
 
-void initStage2(){
-  doRotation(2);
-  currentStage = 2;
-  Serial.println("Stage 2");
-}
+    default:
+      currentStage = -1;
 
-void initStage3(){
-  resetRandomOffset();
-  currentStage = 3;
-  Serial.println("Stage 3");
-}
-
-void initStage4(){
-  initCylinderOffset();
-  currentStage = 4;
-  Serial.println("Stage 4");
-}
-
-void initStage5(){
-  doRotation(3);
-  currentStage = 5;
-  Serial.println("Stage 5");
-}
-
-void initStage6(){
-  resetCylinderOffset();
-  currentStage = 6;
-  Serial.println("Stage 6");
-}
-
-void initStage7(){
-  initRandomOffset();
-  currentStage = 7;
-  Serial.println("Stage 7");
-}
-
-void initStage8(){
-  doRotation(2.5);
-  currentStage = 8;
-  Serial.println("Stage 8");
-}
-void initStage9(){
-  resetRandomOffset();
-  currentStage = 9;
-  Serial.println("Stage 9");
+  }
 }
 
 void alignMotors(){
@@ -347,59 +296,82 @@ void alignAuto() {
 }
 
 void alignBySensor(int stepperID) {
-  int alignMode = 0;  // wait until low
+  AccelStepper &motor = motors[stepperID];
+  int &sensorPin = sensorPins[stepperID];
+  int sensorValue = 0;
+  int sensorAverage = 0;
+  int lastTen[10] = {};
+  int alignMode = 0;  
   int lowStart = 0;
   int lowEnd = 0;
   int midpoint = 0;
-  int sensorValue = 0;
 
-  motors[stepperID].moveTo(STEP_PER_REVOLUTION * 2);
+  motor.setSpeed(ALIGNSPEED);
+  motor.setMaxSpeed(ALIGNSPEED);
+  motor.moveTo(STEP_PER_REVOLUTION * 2);
+
+  // wait until low
   while (alignMode == 0) {
-    sensorValue = analogRead(sensorPins[stepperID]);
+    sensorValue = analogRead(sensorPin);
     Serial.print(stepperID);
     Serial.print(alignMode);
     Serial.println(sensorValue);
     if (sensorValue < SENSOR_LOW) {
-      alignMode = 1;  // find start of high
+      alignMode = 1;  
     }
-    motors[stepperID].run();
+    motor.run();
+    sensorAverage = getAverage(lastTen, sensorValue);
   }
 
+  // find start of high
   while (alignMode == 1) {
-    sensorValue = analogRead(sensorPins[stepperID]);
+    sensorValue = analogRead(sensorPin);
+    sensorAverage = getAverage(lastTen, sensorValue);
     Serial.println(sensorValue);
-    if (sensorValue == 0) {  // skip
-      return;
+    if (sensorAverage > SENSOR_HIGH) {
+      lowStart = motor.currentPosition() - 10;
+      alignMode = 2;  
     }
-    if (sensorValue > SENSOR_HIGH) {
-      lowStart = motors[stepperID].currentPosition();
-      alignMode = 2;  // find end of high
-    }
-    motors[stepperID].run();
-  
+    motor.run();
   }
 
+  // find end of high
   while (alignMode == 2) {
-    sensorValue = analogRead(sensorPins[stepperID]);
-    Serial.println(sensorValue);
-    if (sensorValue < SENSOR_MID) {
-      lowEnd = motors[stepperID].currentPosition();
+    sensorValue = analogRead(sensorPin);
+    sensorAverage = getAverage(lastTen, sensorValue);
+    Serial.println(sensorAverage);
+    if (sensorAverage < SENSOR_MID) {
+      lowEnd = motor.currentPosition() - 10;
       alignMode = -1;  // end
     }
-    motors[stepperID].run();
+    motor.run();
   
   }
 
   if (lowEnd - lowStart < 0) {  // wraps around 0
     midpoint = (lowStart + lowEnd + STEP_PER_REVOLUTION)/2 % STEP_PER_REVOLUTION;
   } else {
-    midpoint = (lowStart + lowEnd)/2;
+    midpoint = (lowStart + lowEnd) / 2;
   }
 
-  motors[stepperID].moveTo(midpoint);
-  motors[stepperID].runToPosition();
-  motors[stepperID].setCurrentPosition(0);
+  motor.moveTo(midpoint);
+  motor.runToPosition();
+  motor.setCurrentPosition(0);
+  motor.setSpeed(SPEED);
+  motor.setMaxSpeed(SPEED);
+  alignedTime = millis();
 
-  
-  
+}
+
+// get average of last 10 sensor values 
+int getAverage (int (&lastTen)[10], int sensorValue) {
+  int total = sensorValue;
+  for (int i = 0; i < 9; i++) {
+    total += lastTen[i];
+    lastTen[i] = lastTen[i+1];
+  }
+  lastTen[9] = sensorValue;
+  int average = total / 10;
+  return average;
+
 }
