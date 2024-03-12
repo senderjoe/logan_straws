@@ -13,16 +13,15 @@
 #define ACCELL 500
 #define SEGMENT STEP_PER_REVOLUTION/12
 #define MANUAL_STEP STEP_PER_REVOLUTION/64
-#define LOOPING 1
+#define LOOPING true
+#define REALIGN_AFTER 60UL  // Re-align after x minutes run time
 
 #define SENSOR_HIGH 400
 #define SENSOR_MID 350
 #define SENSOR_LOW 275
 
-int sensor1val;
-int sensor1 = 5;
 int currentStage;
-int alignedTime;
+unsigned long alignedTime;
 
 // Pins entered in sequence IN1-IN3-IN2-IN4 for proper step sequence
 AccelStepper stepper0(FULLSTEP, 6, 8, 7, 9);
@@ -82,7 +81,6 @@ void initCylinderOffset();
 void resetCylinderOffset();
 void doRotation(float rotations);
 void initStage(int stageNo);
-void alignMotors();
 bool stageComplete();
 int findMotorIndex(char inByte);
 void alignAuto();
@@ -92,20 +90,13 @@ int getAverage (int (&lastTen)[10], int sensorValue);
 
 void setup() {
   Serial.begin(115200);
-  // pinMode (sensor1, INPUT);
-  // sensor1val = digitalRead(sensor1);
 
   for (int i = 0; i < 12; ++i) {
     initStepper(motors[i]);
   }
-  
   // alignManual();
   alignAuto();
-  
   initStage(0);
-  for (int i = 0; i < 12; ++i) {
-    Serial.println(motors[i].targetPosition());
-  }
 }
 
 
@@ -137,34 +128,34 @@ void initRandomOffset() {
   for (int i = 0; i < 12; ++i) {
     int randomOffset = random(0, STEP_PER_REVOLUTION) - (STEP_PER_REVOLUTION / 2);
     randomOffsets[i] = randomOffset;
-    motors[i].moveTo(motors[i].currentPosition() + randomOffset); 
+    motors[i].move(randomOffset); 
   }
 }
 
 void resetRandomOffset() {
   // Return from random offset
   for (int i = 0; i < 12; ++i) {
-    motors[i].moveTo(motors[i].currentPosition() + STEP_PER_REVOLUTION - randomOffsets[i]); 
+    motors[i].move(STEP_PER_REVOLUTION - randomOffsets[i]); 
   }
 }
 
 void initCylinderOffset() {
   // Align in cylinder
   for (int i = 0; i < 12; ++i) {
-    motors[i].moveTo(motors[i].currentPosition() + cylinderOffsets[i]); 
+    motors[i].move(cylinderOffsets[i]); 
   }
 }
 void resetCylinderOffset() {
   // Reset from cylinder to flower
   for (int i = 0; i < 12; ++i) {
-    motors[i].moveTo(motors[i].currentPosition() + STEP_PER_REVOLUTION - cylinderOffsets[i]); 
+    motors[i].move(STEP_PER_REVOLUTION - cylinderOffsets[i]); 
   }
 }
 
 void doRotation(float rotations){
   // Rotate
   for (int i = 0; i < 12; ++i) {
-    motors[i].moveTo(motors[i].currentPosition() + STEP_PER_REVOLUTION * rotations); 
+    motors[i].move(STEP_PER_REVOLUTION * rotations); 
   }
 }
 
@@ -173,6 +164,8 @@ void initStage(int stageNo) {
   Serial.print("Stage ");
   Serial.print(stageNo);
   Serial.println();
+
+  unsigned long timePassed;
 
   switch(stageNo) {
     case 0:  // open / close
@@ -211,8 +204,11 @@ void initStage(int stageNo) {
         currentStage = -1;
         break;
       }
-      delay(1000);
-      if (millis() - alignedTime > 60 * 60 * 1000) {  // 1 hour has passed
+      delay(3000);
+      timePassed = (millis() - alignedTime) / 1000;
+      Serial.print(timePassed);
+      Serial.println(" seconds since alignment");
+      if (timePassed > (REALIGN_AFTER * 60UL)) {  
         doRotation(0.5);  // open in prep for aligning
       } else {
         initStage(0);
@@ -228,13 +224,6 @@ void initStage(int stageNo) {
 
   }
 }
-
-void alignMotors(){
-  stepper1.moveTo(STEP_PER_REVOLUTION); // set target position: 64 steps <=> one revolution
-  while (digitalRead(sensor1) == 0) {}
-    stepper1.run();
-  }
-
 
 bool stageComplete() {
 
@@ -308,14 +297,16 @@ void alignBySensor(int stepperID) {
 
   motor.setSpeed(ALIGNSPEED);
   motor.setMaxSpeed(ALIGNSPEED);
-  motor.moveTo(STEP_PER_REVOLUTION * 2);
+  motor.setCurrentPosition(0);
+  motor.move(STEP_PER_REVOLUTION * 2);
+
+  Serial.print("Aligning: ");
+  Serial.println(stepperID);
 
   // wait until low
   while (alignMode == 0) {
     sensorValue = analogRead(sensorPin);
-    Serial.print(stepperID);
-    Serial.print(alignMode);
-    Serial.println(sensorValue);
+    // Serial.println(sensorValue);
     if (sensorValue < SENSOR_LOW) {
       alignMode = 1;  
     }
@@ -327,9 +318,11 @@ void alignBySensor(int stepperID) {
   while (alignMode == 1) {
     sensorValue = analogRead(sensorPin);
     sensorAverage = getAverage(lastTen, sensorValue);
-    Serial.println(sensorValue);
+    // Serial.println(sensorAverage);
     if (sensorAverage > SENSOR_HIGH) {
       lowStart = motor.currentPosition() - 10;
+      Serial.print("low start: ");
+      Serial.println(lowStart);
       alignMode = 2;  
     }
     motor.run();
@@ -339,9 +332,11 @@ void alignBySensor(int stepperID) {
   while (alignMode == 2) {
     sensorValue = analogRead(sensorPin);
     sensorAverage = getAverage(lastTen, sensorValue);
-    Serial.println(sensorAverage);
+    // Serial.println(sensorAverage);
     if (sensorAverage < SENSOR_MID) {
       lowEnd = motor.currentPosition() - 10;
+      Serial.print("low end: ");
+      Serial.println(lowEnd);
       alignMode = -1;  // end
     }
     motor.run();
